@@ -5,6 +5,7 @@ from dash import html
 import dash_bootstrap_components as dbc
 from io import BytesIO
 import base64
+from scipy.sparse.csgraph import connected_components
 
 
 def fig_to_uri(in_fig, close_all=True, **save_args):
@@ -29,7 +30,18 @@ crs_rp = gs_rp.to_crs(epsg=3857)
 km2_rp = crs_rp.area/10**6
 
 area_car_rp = gpd.read_file('cars/sp/ribeirao_preto/area_imovel/AREA_IMOVEL.shp')
-area_car_rp['KM2'] = gpd.GeoSeries(area_car_rp['geometry']).to_crs(epsg=3857).area/10**6
+
+# INDICANDO AS SOBREPOSICOES
+index_sobreposicao = area_car_rp['geometry'].apply(lambda x: area_car_rp['geometry'].overlaps(x)).values.astype(int)
+
+# CONECTANDO OS COMPONENTES
+n, ids = connected_components(index_sobreposicao)
+
+# AGREGACAO COM DISSOLVE
+df = gpd.GeoDataFrame({'geometry': area_car_rp['geometry'], 'group': ids})
+area_car_sem_sobreposicao = df.dissolve(by='group')
+
+area_car_sem_sobreposicao['KM2'] = gpd.GeoSeries(area_car_sem_sobreposicao['geometry']).to_crs(epsg=3857).area/10**6
 
 plt.figure(1)
 fig_area_car, ax_rp = plt.subplots(figsize  = (5, 4)) 
@@ -43,7 +55,7 @@ ax_rp.set_xticklabels([])
 ax_rp.set_xticks([])
 ax_rp.set_yticks([])
 
-intercessao = gpd.overlay(area_car_rp, rp, how='intersection')
+intercessao = gpd.overlay(area_car_sem_sobreposicao, rp, how='intersection')
 intercessao['LABEL'] = 'Cadastro Ambiental Rural'
 gs_intercessao = gpd.GeoSeries(intercessao['geometry'])
 crs_intercessao = gs_intercessao.to_crs(epsg=3857)
